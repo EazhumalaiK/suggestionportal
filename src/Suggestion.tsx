@@ -1,8 +1,21 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
+
+interface ApiProjectSuggestion {
+  WorkName: string;
+  EstimatedCost: number;
+  ProjectScores: {
+    ProjectedCost: number;
+    Safety: number;
+    Compliance: number;
+    Environmental: number;
+    Efficiency: number;
+    Innovation: number;
+  };
+}
 
 interface Suggestion {
   id: number;
@@ -18,21 +31,7 @@ interface Suggestion {
   };
 }
 
-const initialSuggestions: Suggestion[] = [
-  {
-    id: 1,
-    workName: "Tunnel Reinforcement",
-    estimatedCost: "$42,000",
-    scores: {
-      projectedCost: "$39,000",
-      safety: 87,
-      compliance: 93,
-      environmental: 76,
-      efficiency: 84,
-      innovation: 90,
-    },
-  },
-];
+const initialSuggestions: Suggestion[] = [];
 
 const ScoreBar: React.FC<{ label: string; value: number }> = ({
   label,
@@ -60,6 +59,39 @@ const Suggestion: React.FC = () => {
   const [decisions, setDecisions] = useState<
     Record<number, "approved" | "rejected" | null>
   >({});
+
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      try {
+        const res = await fetch(
+          "https://suggestionportal100-sandbox.mxapps.io/rest/myservice/v1/project"
+        );
+        const data: ApiProjectSuggestion[] = await res.json();
+
+        const mappedSuggestions = data.map((item, index) => ({
+          id: Date.now() + index,
+          workName: item.WorkName,
+          estimatedCost: `$${item.EstimatedCost}`,
+          images: [],
+          files: [],
+          scores: {
+            projectedCost: `$${item.ProjectScores.ProjectedCost}`,
+            safety: item.ProjectScores.Safety,
+            compliance: item.ProjectScores.Compliance,
+            environmental: item.ProjectScores.Environmental,
+            efficiency: item.ProjectScores.Efficiency,
+            innovation: item.ProjectScores.Innovation,
+          },
+        }));
+
+        setSuggestions(mappedSuggestions);
+      } catch (err) {
+        console.error("Failed to fetch project suggestions:", err);
+      }
+    };
+
+    fetchSuggestions();
+  }, []);
 
   const exportCSV = () => {
     const worksheet = XLSX.utils.json_to_sheet(
@@ -147,13 +179,14 @@ const Suggestion: React.FC = () => {
     setDecisions((prev) => ({ ...prev, [id]: "rejected" }));
   };
 
-  const handleAddSuggestion = () => {
+  const handleAddSuggestion = async () => {
     const newSuggestion: Suggestion = {
       id: Date.now(),
+
       workName,
       estimatedCost,
       scores: {
-        projectedCost: estimatedCost,
+        projectedCost: "0", // Always zero
         safety: 0,
         compliance: 0,
         environmental: 0,
@@ -162,7 +195,41 @@ const Suggestion: React.FC = () => {
       },
     };
 
-    setSuggestions([newSuggestion, ...suggestions]);
+    const updatedSuggestions = [newSuggestion, ...suggestions];
+    setSuggestions(updatedSuggestions);
+
+    // Prepare POST payload
+    const payload = {
+      WorkName: newSuggestion.workName,
+      EstimatedCost:
+        parseFloat(newSuggestion.estimatedCost.replace("$", "")) || 0,
+      ProjectScores: {
+        ProjectedCost: 0,
+        Safety: 0,
+        Compliance: 0,
+        Environmental: 0,
+        Efficiency: 0,
+        Innovation: 0,
+      },
+    };
+
+    try {
+      await fetch(
+        "https://suggestionportal100-sandbox.mxapps.io/rest/myservice/v1/project",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify([payload]), // Send as array
+        }
+      );
+      console.log("Suggestion submitted successfully");
+    } catch (error) {
+      console.error("Failed to submit suggestion", error);
+    }
+
+    // Clear form and close modal
     setWorkName("");
     setEstimatedCost("");
     setModalOpen(false);
