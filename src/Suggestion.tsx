@@ -1,4 +1,8 @@
 import React, { useState } from "react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { saveAs } from "file-saver";
 
 interface Suggestion {
   id: number;
@@ -56,6 +60,82 @@ const Suggestion: React.FC = () => {
   const [decisions, setDecisions] = useState<
     Record<number, "approved" | "rejected" | null>
   >({});
+
+  const exportCSV = () => {
+    const worksheet = XLSX.utils.json_to_sheet(
+      suggestions.map(({ scores, ...rest }) => ({
+        ...rest,
+        ...scores,
+      }))
+    );
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Suggestions");
+    XLSX.writeFile(workbook, "suggestions.csv");
+  };
+
+  const exportExcel = () => {
+    const worksheet = XLSX.utils.json_to_sheet(
+      suggestions.map(({ scores, ...rest }) => ({
+        ...rest,
+        ...scores,
+      }))
+    );
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Suggestions");
+    XLSX.writeFile(workbook, "suggestions.xlsx");
+  };
+
+  const exportPDF = () => {
+    const doc = new jsPDF();
+    autoTable(doc, {
+      head: [
+        [
+          "No",
+          "Work Name",
+          "Estimated Cost",
+          "Projected Cost",
+          "Safety",
+          "Compliance",
+          "Environmental",
+          "Efficiency",
+          "Innovation",
+        ],
+      ],
+      body: suggestions.map((s, i) => [
+        i + 1,
+        s.workName,
+        s.estimatedCost,
+        s.scores.projectedCost,
+        s.scores.safety,
+        s.scores.compliance,
+        s.scores.environmental,
+        s.scores.efficiency,
+        s.scores.innovation,
+      ]),
+    });
+    doc.save("suggestions.pdf");
+  };
+
+  const exportDoc = () => {
+    const text = suggestions
+      .map(
+        (s, i) =>
+          `#${i + 1} - ${s.workName}\nEstimated: ${
+            s.estimatedCost
+          }\nScores: ${JSON.stringify(s.scores)}\n`
+      )
+      .join("\n\n");
+    const blob = new Blob([text], { type: "application/msword" });
+    saveAs(blob, "suggestions.doc");
+  };
+
+  const exportPPT = () => {
+    const text = suggestions
+      .map((s, i) => `Slide ${i + 1}: ${s.workName} (${s.estimatedCost})`)
+      .join("\n");
+    const blob = new Blob([text], { type: "application/vnd.ms-powerpoint" });
+    saveAs(blob, "suggestions.ppt");
+  };
 
   const handleApprove = async (id: number) => {
     await fetch(`/api/suggestions/${id}/approve`, { method: "POST" });
@@ -245,6 +325,31 @@ const Suggestion: React.FC = () => {
           </div>
         </div>
       )}
+      <div className="fixed bottom-6 right-6 z-50">
+        <div className="relative group inline-block">
+          <button className="bg-purple-700 text-white px-4 py-3 rounded-full shadow-lg hover:bg-purple-800">
+            Submit & Generate Report
+          </button>
+
+          <div className="absolute hidden group-hover:flex flex-col bg-white shadow-md rounded mb-2 w-48 right-0 bottom-full z-10">
+            {[
+              { label: "CSV", action: exportCSV },
+              { label: "Excel", action: exportExcel },
+              { label: "PDF", action: exportPDF },
+              { label: "PPT", action: exportPPT },
+              { label: "DOC", action: exportDoc },
+            ].map(({ label, action }) => (
+              <button
+                key={label}
+                onClick={action}
+                className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
